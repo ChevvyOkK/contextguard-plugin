@@ -1,0 +1,11 @@
+{
+  "name": "contextguard",
+  "description": "Actively cuts Claude Code token usage: truncates noisy Bash output before it bloats your context, and tightens Grep result caps — both logged so you can see what was saved.",
+  "version": "0.1.0",
+  "author": {
+    "name": "ChevvyOkK",
+    "url": "https://github.com/ChevvyOkK"
+  },
+  "homepage": "https://github.com/ChevvyOkK/contextguard-plugin",
+  "keywords": ["tokens", "cost", "context", "hooks"]
+}
