@@ -43,7 +43,12 @@ count removed.
 
 ## Installing
 
-Local / development install:
+```
+/plugin marketplace add ChevvyOkK/contextguard-plugin
+/plugin install contextguard@contextguard
+```
+
+Local / development install (e.g. to test a change before it's pushed):
 
 ```bash
 claude --plugin-dir /path/to/contextguard-plugin
@@ -54,10 +59,6 @@ Validate the manifest before shipping a change:
 ```bash
 claude plugin validate /path/to/contextguard-plugin
 ```
-
-Marketplace-based installation (`/plugin marketplace add ...`) isn't set up
-yet — this has only been tested via `--plugin-dir` so far. That's the
-honest current state, not a documentation gap.
 
 ## Requirements
 
