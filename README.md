@@ -141,3 +141,11 @@ claude plugin validate /path/to/contextguard-plugin
 
 Node.js (bundled with Claude Code itself, so no extra install). No other
 dependencies — both hook scripts use only Node's built-in `fs`/`os`/`path`.
+
+## License
+
+All rights reserved — see [LICENSE](LICENSE). You're free to install and
+use this plugin, personal or commercial, exactly as you can today;
+copying, modifying, or redistributing it needs permission. A revised
+license adding specific commercial-licensing terms is planned; see the
+LICENSE file for the no-retroactivity guarantee that comes with it.

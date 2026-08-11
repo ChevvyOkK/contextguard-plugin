@@ -7,5 +7,6 @@
     "url": "https://github.com/ChevvyOkK"
   },
   "homepage": "https://github.com/ChevvyOkK/contextguard-plugin",
-  "keywords": ["tokens", "cost", "context", "hooks"]
+  "keywords": ["tokens", "cost", "context", "hooks"],
+  "license": "SEE LICENSE IN LICENSE"
 }
