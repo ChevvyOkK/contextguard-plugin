@@ -38,6 +38,7 @@ function main() {
     hook: 'grep_cap',
     tool_name: input.tool_name || 'Grep',
     capped_to: DEFAULT_HEAD_LIMIT,
+    session_id: input.session_id || undefined,
   });
 
   process.stdout.write(JSON.stringify({
