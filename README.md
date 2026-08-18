@@ -1,26 +1,15 @@
 # ContextGuard (plugin)
 
-A Claude Code plugin that actively cuts token usage instead of just
-reporting it. Two hooks, both defensive by design — if anything about the
-input looks unexpected, they no-op rather than guess.
+A runtime safety, continuity & efficiency plugin for Claude Code.
+
+Actively protects 5-hour/7-day quota limits, prevents stuck agent loops, and eliminates context amnesia after `/compact`.
 
 ## What it does
 
-- **`PostToolUse` on `Bash`** — long command output (a verbose `npm
-  install`, a noisy test run, a full build log) gets written into the
-  conversation once but then billed again on every subsequent cache read
-  for the rest of the session. This hook truncates output over ~200 lines
-  or ~8000 characters down to the first 40 and last 60 lines, while pulling
-  any line that looks like an actual error (`error`, `fail`, `exception`,
-  `traceback`, `panic`, case-insensitive) out of the omitted middle so the
-  signal survives the cut.
-- **`PreToolUse` on `Grep`** — if a search doesn't set an explicit
-  `head_limit`, this caps it to 100 matched lines rather than letting a
-  broad content search return thousands of lines from a large repo. A
-  caller-specified `head_limit` is always left untouched.
-- **`PostToolUse`/`PreToolUse` on every tool (`*`)** — a stuck-agent
-  detector. See [Agent-loop detection](#agent-loop-detection) below; unlike
-  the two hooks above, this one can (only if you opt in) deny a call.
+- **`PreCompact` & `PostCompact` (Continuity Guard)** — When Claude Code triggers compaction (`/compact`), critical architectural rules, negative constraints (`DO NOT`, `NEVER`, `MUST`), and key decisions are captured pre-compact and automatically re-injected if lost during summarization.
+- **`PostToolUse` / `PreToolUse` (Circuit Breaker & Force Rethink)** — Watches for repeated identical calls, re-reading unchanged files, oscillating edits, and repeated failures. When stuck, halts the loop and injects a structured *Force Rethink* protocol.
+- **`PostToolUse` on `Bash` (Output Truncator)** — Long command output (verbose tests, build logs) gets truncated to clean error lines, preserving critical context while saving up to 85% of output token bloat.
+- **`PreToolUse` on `Grep`** — Automatically caps unbounded searches to 100 matched lines.
 
 Every intervention is logged to `~/.claude/contextguard/savings.jsonl` —
 this is how the companion [`contextguard`](https://github.com/ChevvyOkK/contextguard)

@@ -142,17 +142,23 @@ function main() {
 
   if (warnings.length === 0) return;
 
-  const message = warnings.join('\n');
+  const userMessage = warnings.join('\n');
+  const modelContext = 
+    `[ContextGuard Circuit Breaker]:\n${userMessage}\n\n` +
+    `ACTION REQUIRED (Force Rethink Protocol):\n` +
+    `1. Stop repeating the previous action or oscillating between edits.\n` +
+    `2. Summarize confirmed facts and identify why the previous attempt did not progress.\n` +
+    `3. Propose a new, verified hypothesis before executing another tool.`;
 
   if (config.reaction === 'notify' && config.webhookUrl) {
-    notifyWebhook(config.webhookUrl, message);
+    notifyWebhook(config.webhookUrl, userMessage);
   }
 
   process.stdout.write(JSON.stringify({
-    systemMessage: message,
+    systemMessage: `🛑 ContextGuard: ${userMessage}`,
     hookSpecificOutput: {
       hookEventName: 'PostToolUse',
-      additionalContext: message,
+      additionalContext: modelContext,
     },
   }));
 }
