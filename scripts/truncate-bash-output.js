@@ -8,6 +8,7 @@
 // signal survives even when the middle is thrown away.
 
 const { estimateTokens, logSavings } = require('./lib/savings-log');
+const { storeInVault } = require('./lib/vault');
 
 const HEAD_LINES = 40;
 const TAIL_LINES = 60;
@@ -42,11 +43,17 @@ function extractText(toolResponse) {
   return null;
 }
 
-function truncate(text) {
+function truncate(text, sessionId, toolInput) {
   const lines = text.split('\n');
   if (lines.length <= LINE_THRESHOLD && text.length <= CHAR_THRESHOLD) {
     return null;
   }
+
+  // Lossless Vault: store the full unedited output to disk before truncating
+  const vaultId = storeInVault(sessionId, text, {
+    command: commandLabel(toolInput),
+    totalLines: lines.length,
+  });
 
   const head = lines.slice(0, HEAD_LINES);
   const tail = lines.slice(Math.max(HEAD_LINES, lines.length - TAIL_LINES));
@@ -63,12 +70,15 @@ function truncate(text) {
   }
 
   const omittedCount = middle.length;
-  const marker = `... [contextguard: ${omittedCount} lines omitted] ...`;
+  const vaultRef = vaultId
+    ? `... [ContextGuard Lossless Vault: ${omittedCount} lines archived locally as ref: ${vaultId} — full output preserved] ...`
+    : `... [ContextGuard: ${omittedCount} lines omitted] ...`;
+
   const signalBlock = signalLines.length > 0
-    ? ['', `[contextguard: possible error/fail lines from the omitted output]`, ...signalLines, '']
+    ? ['', `[ContextGuard: key error/failure lines from omitted block]`, ...signalLines, '']
     : [];
 
-  return [...head, marker, ...signalBlock, ...tail].join('\n');
+  return [...head, vaultRef, ...signalBlock, ...tail].join('\n');
 }
 
 function main() {
@@ -89,7 +99,7 @@ function main() {
   const text = extractText(input.tool_response);
   if (!text) return;
 
-  const truncated = truncate(text);
+  const truncated = truncate(text, input.session_id, input.tool_input);
   if (!truncated) return;
 
   const charsRemoved = text.length - truncated.length;

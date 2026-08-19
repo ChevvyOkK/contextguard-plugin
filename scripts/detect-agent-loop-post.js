@@ -25,6 +25,7 @@ const {
   isRepeating,
   rereadExceeded,
   recordEditAndCheckRevert,
+  recordTestAndCheckNoProgress,
 } = require('./lib/agent-state');
 const { costTranscriptSync } = require('./lib/transcript-cost');
 
@@ -135,6 +136,19 @@ function main() {
         );
         state.warnedBudget = true;
       }
+    }
+  }
+
+  // 5. No-Progress Detector: test execution failing repeatedly across multiple file edits.
+  if (toolName === 'Bash' && input.tool_input && input.tool_input.command) {
+    const cmd = input.tool_input.command;
+    const output = input.tool_response || '';
+    const noProgress = recordTestAndCheckNoProgress(state, cmd, output, 3);
+    if (noProgress) {
+      warnings.push(
+        `contextguard: test failure repeated ${noProgress.consecutiveFailures} times without progress ` +
+        `("${noProgress.signature}"). Modifying files without fixing root cause burns rate limits.`
+      );
     }
   }
 

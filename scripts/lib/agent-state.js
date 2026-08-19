@@ -40,6 +40,8 @@ function defaultState() {
     warnedReread: {},
     warnedRevert: {},
     warnedBudget: false,
+    testFailureHistory: [],
+    warnedTestNoProgress: {},
   };
 }
 
@@ -152,6 +154,62 @@ function recordEditAndCheckRevert(state, filePath, content) {
   return isRevert;
 }
 
+const TEST_COMMAND_PATTERN = /(?:npm\s+test|pytest|cargo\s+test|vitest|jest|go\s+test|mvn\s+test|gradle\s+test|python\s+-m\s+unittest)/i;
+const TEST_FAILURE_PATTERN = /(?:FAIL|FAILED|AssertionError|ERR!|error\[E\d+\]|test\s+result:\s+FAILED)/i;
+
+/**
+ * Detects whether a test run produced a failure, records its signature,
+ * and alerts if the same test failure has occurred 3+ times in a row despite code edits.
+ */
+function recordTestAndCheckNoProgress(state, command, output, threshold = 3) {
+  if (!command || !TEST_COMMAND_PATTERN.test(command)) {
+    return null;
+  }
+
+  const text = typeof output === 'string' ? output : JSON.stringify(output || '');
+  const isFailure = TEST_FAILURE_PATTERN.test(text);
+
+  if (!isFailure) {
+    // Tests passed! Reset failure streak for this test command
+    state.testFailureHistory = [];
+    return null;
+  }
+
+  // Extract a signature from the failure (first 3 matching failure lines)
+  const failureLines = text
+    .split('\n')
+    .filter(l => TEST_FAILURE_PATTERN.test(l))
+    .slice(0, 3)
+    .map(l => l.trim().slice(0, 80));
+
+  const sig = failureLines.join(' | ') || 'generic_test_failure';
+  const sigHash = sha1(sig).slice(0, 8);
+
+  state.testFailureHistory.push({
+    cmd: command.slice(0, 40),
+    sigHash,
+    sig,
+    callIndex: state.toolCallCount,
+  });
+
+  if (state.testFailureHistory.length > 10) {
+    state.testFailureHistory.shift();
+  }
+
+  const recent = state.testFailureHistory.slice(-threshold);
+  if (recent.length >= threshold && recent.every(r => r.sigHash === sigHash)) {
+    if (!state.warnedTestNoProgress[sigHash]) {
+      state.warnedTestNoProgress[sigHash] = true;
+      return {
+        consecutiveFailures: recent.length,
+        signature: sig,
+      };
+    }
+  }
+
+  return null;
+}
+
 module.exports = {
   loadState,
   saveState,
@@ -160,5 +218,6 @@ module.exports = {
   isRepeating,
   rereadExceeded,
   recordEditAndCheckRevert,
+  recordTestAndCheckNoProgress,
   RECENT_CALLS_KEPT,
 };
