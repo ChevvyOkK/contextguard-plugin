@@ -38,7 +38,11 @@ function redact(value, depth = 0) {
 
   const out = {};
   for (const [key, item] of Object.entries(value)) {
-    if (/password|secret|token|api.?key|authorization|cookie/i.test(key)) {
+    // `token(?!s)` catches credential fields like apiToken/sessionToken
+    // without also matching this codebase's token-*count* fields
+    // (tokensSavedEstimate, estimateTokens) — those are the product's core
+    // metric, not a secret, and redacting them defeats the evidence ledger.
+    if (/password|secret|token(?!s)|api.?key|authorization|cookie/i.test(key)) {
       out[key] = '[REDACTED]';
     } else {
       out[key] = redact(item, depth + 1);
