@@ -30,6 +30,7 @@
 
 const { loadAgentLoopConfig } = require('./lib/agent-config');
 const { loadState, fingerprint } = require('./lib/agent-state');
+const { appendEvidenceEvent } = require('./lib/evidence-ledger');
 
 const HARD_STOP_MARGIN = 4;
 
@@ -75,6 +76,26 @@ function main() {
   const wouldExtendStreak = tail.every((c) => c === fp);
   if (!wouldExtendStreak) return allow();
 
+  const eventId = appendEvidenceEvent({
+    project: input.cwd || null,
+    sessionId,
+    type: 'TOOL_CALL_DENIED',
+    severity: 'critical',
+    confidence: 'high',
+    evidence: [
+      `exact same tool-call fingerprint would reach ${hardStopThreshold} consecutive executions`,
+      `fingerprint: ${fp}`,
+    ],
+    action: 'denied',
+    exactImpact: {
+      repeatedToolCalls: hardStopThreshold,
+    },
+    sourceData: {
+      detector: 'hard_stop_repeat_fingerprint',
+      toolName,
+    },
+  });
+
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
@@ -82,7 +103,8 @@ function main() {
       permissionDecisionReason:
         `contextguard: this exact call (${fp}) has now been repeated ${hardStopThreshold} times in a row ` +
         `with no new information between attempts. Denied to break the loop — try a different approach, ` +
-        `or explain to the user what's blocking progress instead of retrying the same call again.`,
+        `or explain to the user what's blocking progress instead of retrying the same call again.` +
+        (eventId ? ` Evidence: ${eventId}.` : ''),
     },
   }));
 }

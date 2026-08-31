@@ -27,8 +27,8 @@
 | Hook Event | Component | Purpose |
 |---|---|---|
 | **`PreCompact` & `PostCompact`** | **Continuity Guard** | Captures architectural rules and negative constraints (`DO NOT`, `NEVER`, `MUST`) before `/compact` and auto-restores them if dropped. |
-| **`PostToolUse` / `PreToolUse`** | **No-Progress Circuit Breaker** | Watches for repetitive failing actions, re-reading unchanged files, and identical test failures across edits. Injects **Structured Force Rethink**. |
-| **`PostToolUse` on `Bash`** | **Lossless Vault & Truncator** | Truncates noisy test & build logs to key error lines, saving up to 85% token bloat while archiving 100% raw output locally. |
+| **`PostToolUse` / `PreToolUse`** | **No-Progress Circuit Breaker** | Watches for repetitive failing actions, re-reading unchanged files, and identical test failures that survive real edits. Injects **Structured Force Rethink** and writes evidence. |
+| **`PostToolUse` on `Bash`** | **Lossless Vault & Truncator** | Truncates noisy test & build logs to key error lines while archiving 100% raw output locally and recording exact size impact. |
 | **`PreToolUse` on `Grep`** | **Search Guard** | Automatically bounds runaway search patterns to 100 matched lines. |
 
 <br>
@@ -62,7 +62,7 @@ A stuck agent retrying the same failing fix burns through your 5-hour quota rapi
 1. Repeated identical calls        -> Same tool + arguments 3+ times in a row
 2. Excessive file re-reads         -> Same unchanged file re-read 5+ times
 3. Revert oscillation              -> Modifying a file back to a previous state
-4. Semantic No-Progress            -> Test runner fails with identical error across 3 code edits
+4. Semantic No-Progress            -> Same test failure survives 2+ code edits across 3 test runs
 5. Session budget threshold        -> Spend exceeds local configured limit
 ```
 
@@ -94,6 +94,14 @@ When commands produce large outputs, ContextGuard keeps active memory clean whil
 
 * **Where it's saved**: `~/.claude/contextguard/vault/CG-84A21.log`
 * **How to recall**: `cat ~/.claude/contextguard/vault/CG-84A21.log` or grep through it anytime.
+
+Every guard event also writes a local evidence record to:
+
+```text
+~/.claude/contextguard/evidence/events.jsonl
+```
+
+Evidence records separate exact facts (original output size, passed size, repeated call counts, vault path) from estimates (rough token savings). Writes are best-effort and fail open: if the ledger cannot be written, Claude Code continues normally.
 
 <br>
 

@@ -18,13 +18,14 @@ function getLicenseStatus() {
     const raw = fs.readFileSync(LICENSE_PATH, 'utf8');
     const data = JSON.parse(raw);
 
-    const isPro = (data.plan === 'pro' || data.plan === 'lifetime') && data.status === 'active';
+    const hasProShape = (data.plan === 'pro' || data.plan === 'lifetime') && data.status === 'active';
     return {
       plan: data.plan || 'free',
-      isPro: Boolean(isPro),
-      status: data.status || 'unknown',
+      isPro: false,
+      status: hasProShape ? 'unverified' : data.status || 'unknown',
       expiresAt: data.expiresAt || null,
-      licenseKey: data.licenseKey || null,
+      licenseKey: null,
+      verified: false,
     };
   } catch {
     return { plan: 'free', isPro: false, status: 'error' };

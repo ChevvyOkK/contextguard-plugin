@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { getLicenseStatus } = require('./lib/license');
+const { EVIDENCE_FILE, readEvidenceEvents } = require('./lib/evidence-ledger');
 
 console.log('🩺 Running ContextGuard Health & Diagnostic Check...\n');
 
@@ -40,14 +41,28 @@ try {
 }
 
 // 4. Runtime License check
+const evidenceDir = path.dirname(EVIDENCE_FILE);
+try {
+  fs.mkdirSync(evidenceDir, { recursive: true });
+  fs.appendFileSync(EVIDENCE_FILE, '');
+  const recentEvents = readEvidenceEvents(5).length;
+  console.log(`  [✓] Evidence Ledger writable (~/.claude/contextguard/evidence/events.jsonl, ${recentEvents} recent event(s) readable)`);
+} catch (err) {
+  console.log(`  [✗] Cannot write Evidence Ledger: ${err.message}`);
+  issues++;
+}
+
+// 5. Runtime License check
 const lic = getLicenseStatus();
 if (lic.isPro) {
   console.log(`  [✓] Pro License Active: Plan "${lic.plan}" (Status: ${lic.status})`);
+} else if (lic.status === 'unverified') {
+  console.log('  [!] License file present but not verified. Running as Free Community until a signed license is installed.');
 } else {
   console.log('  [i] License: Free Community (Shadow Mode & local audit active)');
 }
 
-// 5. Hooks validation
+// 6. Hooks validation
 const hooks = [
   'truncate-bash-output.js',
   'detect-agent-loop-post.js',

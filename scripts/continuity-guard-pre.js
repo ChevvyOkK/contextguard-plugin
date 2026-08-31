@@ -7,13 +7,18 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { appendEvidenceEvent } = require('./lib/evidence-ledger');
 
 function getCapsuleDir() {
-  const dir = path.join(os.homedir(), '.claude', 'contextguard-capsules');
+  const dir = path.join(os.homedir(), '.claude', 'contextguard', 'continuity-capsules');
   try {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   } catch {}
   return dir;
+}
+
+function safeSessionId(sessionId) {
+  return String(sessionId || 'default_session').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96);
 }
 
 function extractConstraints(cwd) {
@@ -53,7 +58,7 @@ function main() {
     return;
   }
 
-  const sessionId = input.session_id || 'default_session';
+  const sessionId = safeSessionId(input.session_id);
   const cwd = input.cwd || process.cwd();
   const constraints = extractConstraints(cwd);
 
@@ -68,6 +73,27 @@ function main() {
   try {
     const capsulePath = path.join(getCapsuleDir(), `${sessionId}.json`);
     fs.writeFileSync(capsulePath, JSON.stringify(capsule, null, 2), 'utf8');
+    appendEvidenceEvent({
+      project: cwd,
+      sessionId,
+      type: 'CONTEXT_CONTRACT_CAPTURED',
+      severity: constraints.length > 0 ? 'info' : 'notice',
+      confidence: constraints.length > 0 ? 'high' : 'low',
+      evidence: constraints.length > 0
+        ? constraints.map((constraint) => `captured: ${constraint}`)
+        : ['no persistent constraints found in CLAUDE.md'],
+      action: 'captured_pre_compact',
+      exactImpact: {
+        constraintsCaptured: constraints.length,
+      },
+      sourceData: {
+        detector: 'claude_md_constraint_scan',
+        capsulePath,
+      },
+      localReferences: {
+        capsulePath,
+      },
+    });
   } catch {}
 }
 

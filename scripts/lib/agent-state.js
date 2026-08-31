@@ -37,6 +37,8 @@ function defaultState() {
     toolCallCount: 0,
     lastBudgetCheckAtCall: 0,
     lastKnownCostUsd: 0,
+    editCount: 0,
+    editedPaths: {},
     warnedReread: {},
     warnedRevert: {},
     warnedBudget: false,
@@ -111,6 +113,10 @@ function recordCall(state, toolName, toolInput) {
   const input = toolInput && typeof toolInput === 'object' ? toolInput : {};
   if (toolName === 'Read' && input.file_path) {
     state.readCounts[input.file_path] = (state.readCounts[input.file_path] || 0) + 1;
+  }
+  if ((toolName === 'Edit' || toolName === 'Write') && input.file_path) {
+    state.editCount += 1;
+    state.editedPaths[input.file_path] = (state.editedPaths[input.file_path] || 0) + 1;
   }
 
   return fp;
@@ -190,6 +196,7 @@ function recordTestAndCheckNoProgress(state, command, output, threshold = 3) {
     sigHash,
     sig,
     callIndex: state.toolCallCount,
+    editCount: state.editCount,
   });
 
   if (state.testFailureHistory.length > 10) {
@@ -198,11 +205,19 @@ function recordTestAndCheckNoProgress(state, command, output, threshold = 3) {
 
   const recent = state.testFailureHistory.slice(-threshold);
   if (recent.length >= threshold && recent.every(r => r.sigHash === sigHash)) {
+    const first = recent[0];
+    const editCountDelta = state.editCount - first.editCount;
+    if (editCountDelta < threshold - 1) {
+      return null;
+    }
     if (!state.warnedTestNoProgress[sigHash]) {
       state.warnedTestNoProgress[sigHash] = true;
       return {
         consecutiveFailures: recent.length,
         signature: sig,
+        command: command.slice(0, 120),
+        editCountDelta,
+        editedPaths: Object.keys(state.editedPaths).slice(-10),
       };
     }
   }

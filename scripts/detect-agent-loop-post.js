@@ -28,6 +28,7 @@ const {
   recordTestAndCheckNoProgress,
 } = require('./lib/agent-state');
 const { costTranscriptSync } = require('./lib/transcript-cost');
+const { appendEvidenceEvent } = require('./lib/evidence-ledger');
 
 // Re-checking the transcript on every single tool call would mean re-parsing
 // a growing file dozens of times per session for no benefit — the budget
@@ -72,16 +73,34 @@ function main() {
   if (!sessionId || !toolName) return;
 
   const state = loadState(sessionId);
-  const warnings = [];
+  const alerts = [];
 
   const fp = recordCall(state, toolName, input.tool_input);
 
   // 1. Repeated identical calls.
   if (isRepeating(state, config.repeatThreshold) && !state.warnedRepeatFor) {
-    warnings.push(
-      `contextguard: the last ${config.repeatThreshold} tool calls were identical (${fp}). ` +
-      `This usually means the agent is stuck retrying the same thing without new information.`
-    );
+    alerts.push({
+      message:
+        `contextguard: the last ${config.repeatThreshold} tool calls were identical (${fp}). ` +
+        `This usually means the agent is stuck retrying the same thing without new information.`,
+      event: {
+        type: 'NO_PROGRESS_DETECTED',
+        severity: 'warning',
+        confidence: 'high',
+        evidence: [
+          `same tool-call fingerprint repeated ${config.repeatThreshold} times`,
+          `fingerprint: ${fp}`,
+        ],
+        action: 'warned',
+        exactImpact: {
+          repeatedToolCalls: config.repeatThreshold,
+        },
+        sourceData: {
+          detector: 'repeat_fingerprint',
+          toolName,
+        },
+      },
+    });
     state.warnedRepeatFor = fp;
   } else if (state.warnedRepeatFor && state.warnedRepeatFor !== fp) {
     // A different call broke the streak — allow a future repeat of the same
@@ -92,10 +111,28 @@ function main() {
   // 2. Re-reading the same file past the threshold.
   const readPath = toolName === 'Read' && input.tool_input ? input.tool_input.file_path : null;
   if (readPath && rereadExceeded(state, readPath, config.rereadThreshold)) {
-    warnings.push(
-      `contextguard: "${path.basename(readPath)}" has been read ${state.readCounts[readPath]} times this session. ` +
-      `If its content isn't changing, re-reading it just re-spends context on something already in view.`
-    );
+    alerts.push({
+      message:
+        `contextguard: "${path.basename(readPath)}" has been read ${state.readCounts[readPath]} times this session. ` +
+        `If its content isn't changing, re-reading it just re-spends context on something already in view.`,
+      event: {
+        type: 'REPEATED_READ_DETECTED',
+        severity: 'notice',
+        confidence: 'medium',
+        evidence: [
+          `same file read ${state.readCounts[readPath]} times in this session`,
+          `file: ${readPath}`,
+        ],
+        action: 'warned',
+        exactImpact: {
+          readCount: state.readCounts[readPath],
+        },
+        sourceData: {
+          detector: 'reread_count',
+          toolName,
+        },
+      },
+    });
     state.warnedReread[readPath] = true;
   }
 
@@ -113,10 +150,28 @@ function main() {
     if (content !== null) {
       const reverted = recordEditAndCheckRevert(state, filePath, content);
       if (reverted) {
-        warnings.push(
-          `contextguard: "${path.basename(filePath)}" was just edited back to a state it was in earlier this session. ` +
-          `That can mean the agent is oscillating between two versions instead of converging.`
-        );
+        alerts.push({
+          message:
+            `contextguard: "${path.basename(filePath)}" was just edited back to a state it was in earlier this session. ` +
+            `That can mean the agent is oscillating between two versions instead of converging.`,
+          event: {
+            type: 'EDIT_OSCILLATION_DETECTED',
+            severity: 'warning',
+            confidence: 'medium',
+            evidence: [
+              'new file content hash matches an earlier session state',
+              `file: ${filePath}`,
+            ],
+            action: 'warned',
+            exactImpact: {
+              editHistoryDepth: (state.editHashes[filePath] || []).length,
+            },
+            sourceData: {
+              detector: 'edit_revert_hash',
+              toolName,
+            },
+          },
+        });
         state.warnedRevert[filePath] = true;
       }
     }
@@ -130,10 +185,29 @@ function main() {
       state.lastKnownCostUsd = costUsd;
       state.lastBudgetCheckAtCall = state.toolCallCount;
       if (costUsd >= config.sessionBudgetUsd && !state.warnedBudget) {
-        warnings.push(
-          `contextguard: this session has spent an estimated $${costUsd.toFixed(2)}, over the configured ` +
-          `session budget of $${config.sessionBudgetUsd.toFixed(2)}.`
-        );
+        alerts.push({
+          message:
+            `contextguard: this session has spent an estimated $${costUsd.toFixed(2)}, over the configured ` +
+            `session budget of $${config.sessionBudgetUsd.toFixed(2)}.`,
+          event: {
+            type: 'BUDGET_THRESHOLD_CROSSED',
+            severity: 'warning',
+            confidence: 'medium',
+            evidence: [
+              `transcript cost estimate $${costUsd.toFixed(2)}`,
+              `configured budget $${config.sessionBudgetUsd.toFixed(2)}`,
+            ],
+            action: 'warned',
+            estimatedImpact: {
+              sessionCostUsd: costUsd,
+              budgetUsd: config.sessionBudgetUsd,
+            },
+            sourceData: {
+              detector: 'local_transcript_budget',
+              transcriptPath: input.transcript_path,
+            },
+          },
+        });
         state.warnedBudget = true;
       }
     }
@@ -145,18 +219,39 @@ function main() {
     const output = input.tool_response || '';
     const noProgress = recordTestAndCheckNoProgress(state, cmd, output, 3);
     if (noProgress) {
-      warnings.push(
-        `contextguard: test failure repeated ${noProgress.consecutiveFailures} times without progress ` +
-        `("${noProgress.signature}"). Modifying files without fixing root cause burns rate limits.`
-      );
+      alerts.push({
+        message:
+          `contextguard: test failure repeated ${noProgress.consecutiveFailures} times without progress ` +
+          `("${noProgress.signature}"). The same failure survived ${noProgress.editCountDelta} code edits.`,
+        event: {
+          type: 'NO_PROGRESS_DETECTED',
+          severity: 'warning',
+          confidence: 'high',
+          evidence: [
+            `same failing test signature repeated ${noProgress.consecutiveFailures} times`,
+            `same failure survived ${noProgress.editCountDelta} edits`,
+            `signature: ${noProgress.signature}`,
+          ],
+          action: 'force_rethink_prompt_injected',
+          exactImpact: {
+            consecutiveFailures: noProgress.consecutiveFailures,
+            editsBetweenFailures: noProgress.editCountDelta,
+          },
+          sourceData: {
+            detector: 'test_failure_survived_edits',
+            command: noProgress.command,
+            editedPaths: noProgress.editedPaths,
+          },
+        },
+      });
     }
   }
 
   saveState(sessionId, state);
 
-  if (warnings.length === 0) return;
+  if (alerts.length === 0) return;
 
-  const userMessage = warnings.join('\n');
+  const userMessage = alerts.map((alert) => alert.message).join('\n');
   const modelContext = 
     `[ContextGuard Circuit Breaker]:\n${userMessage}\n\n` +
     `ACTION REQUIRED (Force Rethink Protocol):\n` +
@@ -168,8 +263,16 @@ function main() {
     notifyWebhook(config.webhookUrl, userMessage);
   }
 
+  const eventIds = alerts
+    .map((alert) => appendEvidenceEvent({
+      ...alert.event,
+      project: input.cwd || null,
+      sessionId,
+    }))
+    .filter(Boolean);
+
   process.stdout.write(JSON.stringify({
-    systemMessage: `🛑 ContextGuard: ${userMessage}`,
+    systemMessage: `ContextGuard: ${userMessage}${eventIds.length > 0 ? `\nEvidence: ${eventIds.join(', ')}` : ''}`,
     hookSpecificOutput: {
       hookEventName: 'PostToolUse',
       additionalContext: modelContext,

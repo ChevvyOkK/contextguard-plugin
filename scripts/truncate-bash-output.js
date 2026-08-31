@@ -8,7 +8,8 @@
 // signal survives even when the middle is thrown away.
 
 const { estimateTokens, logSavings } = require('./lib/savings-log');
-const { storeInVault } = require('./lib/vault');
+const { storeInVault, getVaultDir } = require('./lib/vault');
+const { appendEvidenceEvent } = require('./lib/evidence-ledger');
 
 const HEAD_LINES = 40;
 const TAIL_LINES = 60;
@@ -71,14 +72,22 @@ function truncate(text, sessionId, toolInput) {
 
   const omittedCount = middle.length;
   const vaultRef = vaultId
-    ? `... [ContextGuard Lossless Vault: ${omittedCount} lines archived locally as ref: ${vaultId} — full output preserved] ...`
+    ? `... [ContextGuard Lossless Vault: ${omittedCount} lines archived locally as ref: ${vaultId}; full output preserved] ...`
     : `... [ContextGuard: ${omittedCount} lines omitted] ...`;
 
   const signalBlock = signalLines.length > 0
     ? ['', `[ContextGuard: key error/failure lines from omitted block]`, ...signalLines, '']
     : [];
 
-  return [...head, vaultRef, ...signalBlock, ...tail].join('\n');
+  const truncated = [...head, vaultRef, ...signalBlock, ...tail].join('\n');
+
+  return {
+    text: truncated,
+    vaultId,
+    originalLines: lines.length,
+    passedLines: truncated.split('\n').length,
+    omittedLines: omittedCount,
+  };
 }
 
 function main() {
@@ -99,10 +108,10 @@ function main() {
   const text = extractText(input.tool_response);
   if (!text) return;
 
-  const truncated = truncate(text, input.session_id, input.tool_input);
-  if (!truncated) return;
+  const result = truncate(text, input.session_id, input.tool_input);
+  if (!result) return;
 
-  const charsRemoved = text.length - truncated.length;
+  const charsRemoved = text.length - result.text.length;
   if (charsRemoved <= 0) return;
 
   logSavings({
@@ -122,10 +131,47 @@ function main() {
     command: commandLabel(input.tool_input),
   });
 
+  const eventId = appendEvidenceEvent({
+    project: input.cwd || null,
+    sessionId: input.session_id || undefined,
+    type: 'OUTPUT_TRUNCATED',
+    severity: 'info',
+    confidence: 'high',
+    evidence: [
+      `bash output exceeded threshold (${text.length} chars, ${result.originalLines} lines)`,
+      result.vaultId ? `full output stored in local vault as ${result.vaultId}` : 'vault write unavailable; output was still truncated',
+    ],
+    action: 'truncated_active_context',
+    exactImpact: {
+      originalChars: text.length,
+      passedChars: result.text.length,
+      preservedChars: result.vaultId ? text.length : 0,
+      removedChars: charsRemoved,
+      originalLines: result.originalLines,
+      passedLines: result.passedLines,
+      omittedLines: result.omittedLines,
+    },
+    estimatedImpact: {
+      tokensSavedEstimate: estimateTokens(charsRemoved),
+      method: 'ceil(chars_removed / 4)',
+    },
+    sourceData: {
+      detector: 'bash_output_size',
+      command: commandLabel(input.tool_input),
+    },
+    localReferences: result.vaultId
+      ? {
+          vaultId: result.vaultId,
+          storedPath: require('path').join(getVaultDir(), `${result.vaultId}.log`),
+        }
+      : null,
+  });
+
   process.stdout.write(JSON.stringify({
+    systemMessage: eventId ? `ContextGuard Output Guard: preserved full output locally. Evidence: ${eventId}` : undefined,
     hookSpecificOutput: {
       hookEventName: 'PostToolUse',
-      updatedToolOutput: truncated,
+      updatedToolOutput: result.text,
     },
   }));
 }

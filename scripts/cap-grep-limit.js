@@ -10,6 +10,7 @@
 // happened — no invented token figure.
 
 const { logSavings } = require('./lib/savings-log');
+const { appendEvidenceEvent } = require('./lib/evidence-ledger');
 
 const DEFAULT_HEAD_LIMIT = 100;
 
@@ -41,7 +42,30 @@ function main() {
     session_id: input.session_id || undefined,
   });
 
+  const eventId = appendEvidenceEvent({
+    project: input.cwd || null,
+    sessionId: input.session_id || undefined,
+    type: 'OUTPUT_GUARD_LIMIT_APPLIED',
+    severity: 'info',
+    confidence: 'high',
+    evidence: [
+      `Grep had no explicit head_limit`,
+      `head_limit set to ${DEFAULT_HEAD_LIMIT}`,
+    ],
+    action: 'bounded_tool_output',
+    exactImpact: {
+      headLimit: DEFAULT_HEAD_LIMIT,
+    },
+    estimatedImpact: null,
+    sourceData: {
+      detector: 'grep_head_limit_missing',
+      pattern: toolInput.pattern || null,
+      path: toolInput.path || null,
+    },
+  });
+
   process.stdout.write(JSON.stringify({
+    systemMessage: eventId ? `ContextGuard Search Guard: capped Grep output. Evidence: ${eventId}` : undefined,
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: 'allow',
