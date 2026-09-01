@@ -5,7 +5,7 @@
 **Runtime Safety, Continuity & Efficiency Guard for Claude Code**  
 *Hooks into Claude Code lifecycle to catch no-progress loops, preserve rules across `/compact`, and eliminate token bloat.*
 
-[![Version](https://img.shields.io/badge/version-0.6.0-6366f1)](package.json)
+[![Version](https://img.shields.io/badge/version-0.7.0-6366f1)](package.json)
 [![Claude Code](https://img.shields.io/badge/claude--code-compatible-orange)](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -79,6 +79,18 @@ ACTION REQUIRED (Force Rethink Protocol):
 2. Summarize confirmed facts and explain why previous 3 hypotheses failed.
 3. Formulate a fundamentally different root-cause hypothesis before calling Edit/Write.
 ```
+
+<br>
+
+## 📡 Telegram Remote Bridge
+
+Start the [ContextGuard Remote](https://contextguard.tech/dashboard/settings) bridge without leaving Claude Code:
+
+```
+/contextguard:remote
+```
+
+Runs `contextguard remote` in the background for you and reports whether it connected. Requires the `contextguard` CLI on PATH and a one-time `contextguard tg --api-key <key>` pairing (the key is then remembered locally — you won't be asked for it again). Full setup guide: dashboard → Settings → Telegram Remote Control.
 
 <br>
 

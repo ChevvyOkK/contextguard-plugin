@@ -1,7 +1,7 @@
 {
   "name": "contextguard",
-  "description": "Runtime guard for Claude Code: intercepts no-progress loops with a Force Rethink circuit breaker, restores dropped rules across /compact via Continuity Guard, truncates noisy Bash output and caps runaway Grep results, and logs every intervention to a local evidence ledger.",
-  "version": "0.6.0",
+  "description": "Runtime guard for Claude Code: intercepts no-progress loops with a Force Rethink circuit breaker, restores dropped rules across /compact via Continuity Guard, truncates noisy Bash output and caps runaway Grep results, logs every intervention to a local evidence ledger, and can start the Telegram Remote bridge via /contextguard:remote.",
+  "version": "0.7.0",
   "author": {
     "name": "ChevvyOkK",
     "url": "https://github.com/ChevvyOkK"
